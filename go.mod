@@ -1,4 +1,4 @@
-module repo-manager
+module github.com/ZaRqax/repom
 
 go 1.24.2
 

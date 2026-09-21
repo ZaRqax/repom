@@ -27,18 +27,41 @@ the operations running in parallel.
 
 ## Install
 
-Build from source:
+### Install script (Linux & macOS)
+
+Downloads the prebuilt binary for your platform and installs it to
+`/usr/local/bin` (or `~/.local/bin` when that is not writable):
 
 ```sh
-git clone git@github.com:ZaRqax/repom.git
-cd repom
-go build -o repom .
+curl -fsSL https://raw.githubusercontent.com/ZaRqax/repom/main/install.sh | sh
 ```
 
-Or run without building:
+Install a specific version with `REPOM_VERSION`:
 
 ```sh
-go run . /path/to/workspace
+curl -fsSL https://raw.githubusercontent.com/ZaRqax/repom/main/install.sh | REPOM_VERSION=1.0.0 sh
+```
+
+### Go
+
+Requires Go 1.24+:
+
+```sh
+go install github.com/ZaRqax/repom@latest
+```
+
+### Prebuilt binaries
+
+Grab the archive for your OS/arch from the
+[releases page](https://github.com/ZaRqax/repom/releases), extract it and put
+`repom` on your `PATH`.
+
+### Build from source
+
+```sh
+git clone https://github.com/ZaRqax/repom.git
+cd repom
+go build -o repom .
 ```
 
 ## Usage

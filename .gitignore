@@ -1,5 +1,6 @@
 /repo-manager
 /repom
+/dist/
 
 *.exe
 *.test

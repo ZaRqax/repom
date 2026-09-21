@@ -10,7 +10,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-v", "--version", "version":
+			fmt.Println("repom", version)
+			return
+		}
+	}
+
 	workDir := "."
 	if len(os.Args) > 1 {
 		workDir = os.Args[1]
