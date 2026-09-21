@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"fmt"
@@ -39,8 +39,8 @@ func (m model) viewList() string {
 	b.WriteString("\n  ")
 	b.WriteString(titleStyle.Render("Repo Manager"))
 	selCount := 0
-	for _, r := range m.repos {
-		if r.selected {
+	for _, item := range m.repos {
+		if item.selected {
 			selCount++
 		}
 	}
@@ -50,9 +50,9 @@ func (m model) viewList() string {
 	b.WriteString("\n\n")
 
 	maxName := 0
-	for _, r := range m.repos {
-		if len(r.name) > maxName {
-			maxName = len(r.name)
+	for _, item := range m.repos {
+		if len(item.repo.Name) > maxName {
+			maxName = len(item.repo.Name)
 		}
 	}
 
@@ -70,7 +70,7 @@ func (m model) viewList() string {
 	}
 
 	for i := start; i < end; i++ {
-		r := m.repos[i]
+		item := m.repos[i]
 
 		cursor := "  "
 		if i == m.cursor {
@@ -78,15 +78,15 @@ func (m model) viewList() string {
 		}
 
 		check := "□"
-		if r.selected {
+		if item.selected {
 			check = checkFmt.Render("■")
 		}
 
-		name := fmt.Sprintf("%-*s", maxName, r.name)
-		branch := branchFmt.Render(r.branch)
+		name := fmt.Sprintf("%-*s", maxName, item.repo.Name)
+		branch := branchFmt.Render(item.repo.Branch)
 
 		dirty := ""
-		if r.dirty {
+		if item.repo.Dirty {
 			dirty = dirtyFmt.Render(" ●")
 		}
 
@@ -112,8 +112,8 @@ func (m model) viewBranchInput() string {
 	b.WriteString("\n\n")
 
 	selCount := 0
-	for _, r := range m.repos {
-		if r.selected {
+	for _, item := range m.repos {
+		if item.selected {
 			selCount++
 		}
 	}
@@ -140,31 +140,28 @@ func (m model) viewRunning() string {
 		}
 	}
 
-	// Title with counter
 	b.WriteString("\n  ")
 	b.WriteString(titleStyle.Render(m.opLabel))
 	b.WriteString(dimStyle.Render(fmt.Sprintf("  %d/%d", done, total)))
 	b.WriteString("\n\n")
 
-	// Column width
 	maxName := 0
-	for _, r := range m.pendingRepos {
-		if len(r.name) > maxName {
-			maxName = len(r.name)
+	for _, item := range m.pendingRepos {
+		if len(item.repo.Name) > maxName {
+			maxName = len(item.repo.Name)
 		}
 	}
 
-	// Each repo: done → result, still running → spinner
-	for i, r := range m.pendingRepos {
-		name := fmt.Sprintf("%-*s", maxName, r.name)
+	for i, item := range m.pendingRepos {
+		name := fmt.Sprintf("%-*s", maxName, item.repo.Name)
 		slot := m.progressSlots[i]
 
 		if slot != nil {
 			icon := successFmt.Render("✓")
-			msg := slot.message
-			if !slot.success {
+			msg := slot.Message
+			if !slot.Success {
 				icon = errorFmt.Render("✗")
-				msg = errorFmt.Render(slot.message)
+				msg = errorFmt.Render(slot.Message)
 			}
 			fmt.Fprintf(&b, "  %s %s  %s\n", icon, name, msg)
 		} else {
@@ -188,19 +185,19 @@ func (m model) viewResults() string {
 
 	maxName := 0
 	for _, r := range m.results {
-		if len(r.repoName) > maxName {
-			maxName = len(r.repoName)
+		if len(r.RepoName) > maxName {
+			maxName = len(r.RepoName)
 		}
 	}
 
 	for _, r := range m.results {
 		icon := successFmt.Render("✓")
-		msg := r.message
-		if !r.success {
+		msg := r.Message
+		if !r.Success {
 			icon = errorFmt.Render("✗")
-			msg = errorFmt.Render(r.message)
+			msg = errorFmt.Render(r.Message)
 		}
-		name := fmt.Sprintf("%-*s", maxName, r.repoName)
+		name := fmt.Sprintf("%-*s", maxName, r.RepoName)
 		fmt.Fprintf(&b, "  %s %s  %s\n", icon, name, msg)
 	}
 

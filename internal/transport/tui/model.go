@@ -1,8 +1,9 @@
-package main
+package tui
 
 import (
 	"strings"
 
+	"github.com/ZaRqax/repom/internal/domain"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,23 +18,15 @@ const (
 	stateResults
 )
 
-type repoEntry struct {
-	path     string
-	name     string
-	branch   string
-	dirty    bool
+type repoItem struct {
+	repo     domain.Repo
 	selected bool
 }
 
-// repoStepMsg is sent when a single repo goroutine finishes.
-type repoStepMsg struct {
-	index  int
-	result opResult
-}
-
 type model struct {
+	svc         Service
 	workDir     string
-	repos       []repoEntry
+	repos       []repoItem
 	cursor      int
 	state       viewState
 	branchInput textinput.Model
@@ -41,14 +34,13 @@ type model struct {
 	width       int
 	height      int
 
-	// Operation progress (parallel)
 	opLabel       string
-	pendingRepos  []repoEntry
-	progressSlots []*opResult // nil = still running, non-nil = done
-	results       []opResult  // final results for stateResults
+	pendingRepos  []repoItem
+	progressSlots []*domain.OpResult
+	results       []domain.OpResult
 }
 
-func newModel(workDir string, repos []repoEntry) model {
+func newModel(svc Service, workDir string, repos []domain.Repo) model {
 	ti := textinput.New()
 	ti.Placeholder = "feature/TRP-0000-description"
 	ti.CharLimit = 100
@@ -57,9 +49,15 @@ func newModel(workDir string, repos []repoEntry) model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
+	items := make([]repoItem, len(repos))
+	for i, r := range repos {
+		items[i] = repoItem{repo: r}
+	}
+
 	return model{
+		svc:         svc,
 		workDir:     workDir,
-		repos:       repos,
+		repos:       items,
 		branchInput: ti,
 		spinner:     sp,
 	}
@@ -79,7 +77,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case repoStepMsg:
 		m.progressSlots[msg.index] = &msg.result
 
-		// Check if all done
 		allDone := true
 		for _, slot := range m.progressSlots {
 			if slot == nil {
@@ -89,7 +86,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if allDone {
 			m.state = stateResults
-			m.results = make([]opResult, len(m.progressSlots))
+			m.results = make([]domain.OpResult, len(m.progressSlots))
 			for i, slot := range m.progressSlots {
 				m.results[i] = *slot
 			}
@@ -112,18 +109,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// runAllParallel launches all repo operations as concurrent goroutines.
-func runAllParallel(repos []repoEntry, op, branch string) tea.Cmd {
+func runAllParallel(svc Service, repos []repoItem, op opKind, branch string) tea.Cmd {
 	cmds := make([]tea.Cmd, len(repos))
-	for i, repo := range repos {
-		i, repo := i, repo
+	for i, item := range repos {
+		i, item := i, item
 		cmds[i] = func() tea.Msg {
-			var result opResult
+			var result domain.OpResult
 			switch op {
-			case "update":
-				result = updateRepo(repo)
-			case "branch":
-				result = createBranchInRepo(repo, branch)
+			case opUpdate:
+				result = svc.Update(item.repo)
+			case opBranch:
+				result = svc.CreateBranch(item.repo, branch)
 			}
 			return repoStepMsg{index: i, result: result}
 		}
@@ -132,18 +128,22 @@ func runAllParallel(repos []repoEntry, op, branch string) tea.Cmd {
 }
 
 func (m *model) refreshRepos() {
-	refreshed, err := scanRepos(m.workDir)
+	refreshed, err := m.svc.Repos(m.workDir)
 	if err != nil {
 		return
 	}
-	selMap := make(map[string]bool, len(m.repos))
-	for _, r := range m.repos {
-		selMap[r.name] = r.selected
+
+	selected := make(map[string]bool, len(m.repos))
+	for _, item := range m.repos {
+		selected[item.repo.Name] = item.selected
 	}
-	for i := range refreshed {
-		refreshed[i].selected = selMap[refreshed[i].name]
+
+	items := make([]repoItem, len(refreshed))
+	for i, r := range refreshed {
+		items[i] = repoItem{repo: r, selected: selected[r.Name]}
 	}
-	m.repos = refreshed
+	m.repos = items
+
 	if m.cursor >= len(m.repos) {
 		m.cursor = len(m.repos) - 1
 	}
@@ -172,8 +172,8 @@ func (m model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case "a":
 		allSelected := true
-		for _, r := range m.repos {
-			if !r.selected {
+		for _, item := range m.repos {
+			if !item.selected {
 				allSelected = false
 				break
 			}
@@ -189,8 +189,8 @@ func (m model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateRunning
 		m.opLabel = "Updating"
 		m.pendingRepos = selected
-		m.progressSlots = make([]*opResult, len(selected))
-		return m, tea.Batch(m.spinner.Tick, runAllParallel(selected, "update", ""))
+		m.progressSlots = make([]*domain.OpResult, len(selected))
+		return m, tea.Batch(m.spinner.Tick, runAllParallel(m.svc, selected, opUpdate, ""))
 	case "b":
 		selected := m.getSelected()
 		if len(selected) == 0 {
@@ -224,9 +224,9 @@ func (m model) updateBranchInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateRunning
 			m.opLabel = "Creating branches"
 			m.pendingRepos = selected
-			m.progressSlots = make([]*opResult, len(selected))
+			m.progressSlots = make([]*domain.OpResult, len(selected))
 			m.branchInput.SetValue("")
-			return m, tea.Batch(m.spinner.Tick, runAllParallel(selected, "branch", name))
+			return m, tea.Batch(m.spinner.Tick, runAllParallel(m.svc, selected, opBranch, name))
 		}
 	}
 
@@ -262,12 +262,12 @@ func (m model) updateResults(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) getSelected() []repoEntry {
-	var sel []repoEntry
-	for _, r := range m.repos {
-		if r.selected {
-			sel = append(sel, r)
+func (m model) getSelected() []repoItem {
+	var selected []repoItem
+	for _, item := range m.repos {
+		if item.selected {
+			selected = append(selected, item)
 		}
 	}
-	return sel
+	return selected
 }

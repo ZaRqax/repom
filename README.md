@@ -73,6 +73,12 @@ the current directory.
 ./repom /path/to/workspace
 ```
 
+Show the installed version:
+
+```sh
+repom --version
+```
+
 ### Key bindings
 
 | Key | Action |
@@ -102,6 +108,26 @@ For each selected repository:
 1. If the working tree is dirty, a temporary `WIP` commit is created.
 2. The default branch is checked out and pulled.
 3. The new branch is created with `git checkout -b`.
+
+## Project layout
+
+The code follows a clean-architecture layering, `domain → repository →
+service → transport`, with `main.go` acting as the composition root:
+
+```
+main.go                                   wiring and CLI entry point
+internal/
+├── domain/                               entities (Repo, PullStats, OpResult)
+├── repository/                           interfaces (Git, RepoFinder)
+│   ├── git/                              git CLI implementation
+│   └── finder/                           filesystem repo discovery
+├── service/repomanager/                  update / branch business logic
+└── transport/tui/                        bubbletea model and views
+```
+
+The transport layer depends only on the service interface, and the service
+depends only on repository interfaces — the concrete git and finder
+implementations are injected in `main.go`.
 
 ## License
 
