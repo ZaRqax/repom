@@ -1,0 +1,6 @@
+/repo-manager
+/repom
+
+*.exe
+*.test
+*.out
